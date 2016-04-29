@@ -143,13 +143,18 @@ val (&&&) : (char -> bool) -> (char -> bool) -> char -> bool
 (** Conjunction on predicates *)
 
 val (<|>) : 'a t -> 'a t -> 'a t
-(** [a <|> b] tries to parse [a], and if [a] fails, backtracks and tries
-    to parse [b]. Therefore, it succeeds if either succeeds *)
+(** [a <|> b] tries to parse [a], and if [a] fails without
+    consuming any input, backtracks and tries
+    to parse [b], otherwise it fails as [a] *)
 
 val (<?>) : 'a t -> string -> 'a t
 (** [a <?> msg] behaves like [a], but if [a] fails it fails with [msg]
     instead. Useful as the last choice in a series of [<|>]:
     [a <|> b <|> c <?> "expected a|b|c"] *)
+
+val try_ : 'a t -> 'a t
+(** [try_ p] tries to parse like [p], but backtracks if [p] fails.
+    Useful in combination with [<|>] *)
 
 val string : string -> string t
 (** [string s] parses exactly the string [s], and nothing else *)
@@ -161,7 +166,7 @@ val many1 : 'a t -> 'a list t
 (** parses a non empty list *)
 
 val skip : _ t -> unit t
-(** [skip p] parses [p] and ignores its result *)
+(** [skip p] parses zero or more times [p] and ignores its result *)
 
 val sep : by:_ t -> 'a t -> 'a list t
 (** [sep ~by p] parses a list of [p] separated by [by] *)

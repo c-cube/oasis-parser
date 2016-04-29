@@ -289,10 +289,17 @@ let (<|>) : 'a t -> 'a t -> 'a t
   = fun x y st ~ok ~err ->
     let i = st.pos () in
     x st ~ok
-      ~err:(fun _ ->
-        st.backtrack i; (* restore pos *)
-        y st ~ok ~err
+      ~err:(fun e ->
+        let j = st.pos() in
+        if i=j then y st ~ok ~err (* try [y] *)
+        else err e (* fail *)
       )
+
+let try_ : 'a t -> 'a t
+  = fun p st ~ok ~err ->
+    let i = st.pos() in
+    p st ~ok
+      ~err:(fun e -> st.backtrack i; err e)
 
 let (<?>) : 'a t -> string -> 'a t
   = fun x msg st ~ok ~err ->
@@ -335,12 +342,14 @@ let rec skip p st ~ok ~err =
       ok()
     )
 
-let rec sep1 ~by p =
+let rec sep ~by p =
+  (try_ p <* by >>= fun x -> sep ~by p >|= fun tl -> x::tl)
+  <|> return []
+
+let sep1 ~by p =
   p >>= fun x ->
-  let cont = by *> sep ~by p >|= fun tl -> x :: tl in
-  cont <|> return [x]
-and sep ~by p =
-  sep1 ~by p <|> return []
+  ( try_ by *>  sep ~by p >|= fun tl -> x :: tl)
+  <|> return [x]
 
 module MemoTbl = struct
   (* table of closures, used to implement universal type *)
