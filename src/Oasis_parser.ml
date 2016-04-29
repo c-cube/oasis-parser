@@ -18,9 +18,10 @@ let fail_tab (l,c) = P.failf "error: leading tab at %s\n%!" (print_pos (l,c))
 (* parse leading indentation, return new indentation *)
 let parse_indent : int P.t = P.skip_space *> P.get_cnum
 
-let eat_line = P.skip_space <* P.endline
+let eat_comment =
+  (P.try_ (P.char '#') *> P.skip_chars (fun c->c <> '\n')) <|> P.nop
 
-let empty_line : char P.t = P.skip_space *> P.endline
+let empty_line : char P.t = P.skip_space *> eat_comment *> P.endline
 
 (* char belonging to a name *)
 let is_name_ = function
@@ -115,7 +116,7 @@ let parse_field_sep : field_sep P.t =
 
 (* parse a "if" statement *)
 let rec parse_if indent : A.stmt P.t =
-  P.try_ (P.string "if") *> parse_expr <* eat_line
+  P.try_ (P.string "if") *> parse_expr <* empty_line
   >>= fun a ->
   parse_indent >>= fun i1 ->
   if i1 <= indent then P.failf "after `if`, expected indent > %d" indent
@@ -124,7 +125,7 @@ let rec parse_if indent : A.stmt P.t =
   if i > indent then P.failf "after `if`, expected `else` at level %d" indent
   else (
     (
-      P.try_ (P.string "else") *> eat_line *> parse_indent >>= fun i2 ->
+      P.try_ (P.string "else") *> empty_line *> parse_indent >>= fun i2 ->
       if i1<>i2 then P.failf "after `else`, expected consistent indent %d" i1
       else parse_stmts i1 [] >>= fun c -> P.return (A.s_if a b c)
     )
