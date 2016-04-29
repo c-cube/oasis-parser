@@ -83,6 +83,9 @@ let rec pp_stmt out s =
         (pp_list Format.pp_print_string) l
     | S_field (n, F_eval e) ->
       Format.fprintf out "@[%s$: @[<hv>%a@]@]" n pp_expr e
+    | S_if (e, a, []) ->
+      Format.fprintf out "@[<v>if @[<h>%a@]@ @[<2>  %a@]@]"
+        pp_expr e (pp_list pp_stmt) a
     | S_if (e, a, b) ->
       Format.fprintf out "@[<v>if @[<h>%a@]@ @[<2>  %a@]@ else@ @[<2>  %a@]@]"
         pp_expr e (pp_list pp_stmt) a (pp_list pp_stmt) b
@@ -100,6 +103,8 @@ let pp_top_stmt out st =
         | Document -> "Document"
       )
   in match st with
+    | TS_stmt (S_if _ as s) ->
+      Format.fprintf out "@[%a@]@," pp_stmt s
     | TS_stmt s -> pp_stmt out s
     | TS_decl (d,n,l) ->
       Format.fprintf out "@[<v2>%a %s:@ %a@]@,"
