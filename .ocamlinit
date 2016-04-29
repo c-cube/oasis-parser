@@ -1,0 +1,5 @@
+#directory "_build/src";;
+#load "oasis_parser.cma";;
+open Oasis_parser;;
+module P = Oasis_parser_co;;
+open P.Infix;;
