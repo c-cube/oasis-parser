@@ -75,13 +75,13 @@ let rec pp_list pp out = function
 let rec pp_stmt out s =
   match s with
     | S_field (n, F_set l) ->
-      Format.fprintf out "@[%s: @[<v>%a@]@]@," n
+      Format.fprintf out "@[%s: @[<v>%a@]@]" n
         (pp_list Format.pp_print_string) l
     | S_field (n, F_add l) ->
-      Format.fprintf out "@[%s+: @[<v>%a@]@]@," n
+      Format.fprintf out "@[%s+: @[<v>%a@]@]" n
         (pp_list Format.pp_print_string) l
     | S_field (n, F_eval e) ->
-      Format.fprintf out "@[%s$: @[<hv>%a@]@]@," n pp_expr e
+      Format.fprintf out "@[%s$: @[<hv>%a@]@]" n pp_expr e
     | S_if (e, a, b) ->
       Format.fprintf out "@[<v>if @[<h>%a@]@ @[<2>  %a@]@ else@ @[<2>  %a@]@]"
         pp_expr e pp_stmt a pp_stmt b

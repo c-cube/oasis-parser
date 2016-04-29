@@ -1,5 +1,9 @@
 #directory "_build/src";;
 #load "oasis_parser.cma";;
 open Oasis_parser;;
+module A = Oasis_ast;;
+#install_printer A.pp_expr;;
+#install_printer A.pp_stmt;;
+#install_printer A.pp_top_stmt;;
 module P = Oasis_parser_co;;
 open P.Infix;;

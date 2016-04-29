@@ -16,30 +16,26 @@ let print_pos (l,c) = Printf.sprintf "line %d, col %d" l c
 let fail_tab (l,c) = P.failf "error: leading tab at %s\n%!" (print_pos (l,c))
 
 (* parse leading indentation, return new indentation *)
-let parse_indent : int P.t =
-  P.chars_if P.is_space >>= fun s ->
-  if String.contains s '\t'
-  then
-    P.get_pos >>= fun (l,c) ->
-    fail_tab (l, c)
-  else P.get_cnum
+let parse_indent : int P.t = P.skip_space *> P.get_cnum
 
 let eat_line = P.skip_space <* P.endline
 
-let empty_line : char P.t =
-  P.skip_space *> P.endline
+let empty_line : char P.t = P.skip_space *> P.endline
+
+(* char belonging to a name *)
+let is_name_ = function
+  | 'a'..'z' | 'A'..'Z' | '0'..'9' | '_' -> true
+  | _ -> false
 
 let parse_name : A.name P.t =
   let quoted = P.try_ (P.char '"') *> P.chars_if (fun c->c <> '"') <* P.char '"' in
-  let non_quoted = P.chars1_if P.is_alpha_num in
+  let non_quoted = P.chars1_if is_name_ in
   quoted <|> non_quoted <?> "expected a name"
 
 let parse_flag =
   P.try_ (P.string "flag") *> P.skip_space *> P.char '(' *> P.skip_space *>
     parse_name <* P.skip_space <* P.char ')'
   >|= A.e_flag
-
-(* TODO: allow _ in test name *)
 
 let parse_test =
   P.try_ (P.chars1_if P.is_alpha_num) <* P.skip_space >>= fun t ->
@@ -138,17 +134,35 @@ and parse_field : A.stmt P.t =
 
 (* atomic statement: field/if *)
 and parse_stmt indent : A.stmt P.t =
-  parse_if indent
-  <|> parse_field
-  <?> "expected statement"
+  parse_indent >>= fun indent' ->
+  if indent=indent' then (
+    parse_if indent
+    <|> parse_field
+    <?> "expected statement"
+  ) else P.failf "parse_stmt: wrong indentation (expected %d, got %d)" indent indent'
+
+let rec parse_stmts indent acc =
+  P.skip empty_line *> P.skip_space *>
+  parse_indent >>= fun indent' ->
+  if indent' < indent then
+    if acc<>[]
+    then P.return (List.rev acc)
+    else P.fail "expected non-empty list of statements"
+  else (
+    parse_stmt indent >>= fun st ->
+    parse_stmts indent (st :: acc)
+  )
 
 (* parse a "Library foo: blabla"-like statement *)
 let parse_top_decl : A.toplevel_decl -> A.top_stmt P.t
   = fun decl ->
-    parse_name <* P.skip_space >>= fun name ->
-    P.get_lnum >>= fun indent ->
-    P.many1 (parse_stmt indent) >|= fun l ->
-    A.ts_decl decl name l
+    P.skip_space *> parse_name <* P.skip_space >>= fun name ->
+    P.endline *> parse_indent >>= fun indent ->
+    if indent=1 then P.fail "expected indented list of statements"
+    else (
+      parse_stmts indent [] >|= fun l ->
+      A.ts_decl decl name l
+    )
 
 (* toplevel statements *)
 let parse_top_stmt : A.top_stmt P.t =
@@ -164,20 +178,24 @@ let parse_top_stmt : A.top_stmt P.t =
       | _ -> P.fail "expected decl"
     ) >>= parse_top_decl
   in
-  parse_decl
-  <|> (parse_stmt 0 >|= A.ts_stmt)
+  parse_indent >>= fun indent ->
+  if indent<>1 then P.fail "toplevel statement cannot be indented"
+  else (
+    parse_decl
+    <|> (parse_stmt indent >|= A.ts_stmt)
+  )
 
 (* parse a list of toplevel statements *)
 let parse : A.top_stmt list P.t =
   let rec aux acc =
     P.skip empty_line *> (
-      (P.try_ P.eoi >|= fun _ -> List.rev acc)
+      (P.try_ (P.skip_space *> P.eoi) >|= fun _ -> List.rev acc)
       <|> (parse_top_stmt >>= fun s -> aux (s :: acc))
     )
   in
   aux []
 
 let parse_string s = Oasis_parser_co.parse_string s ~p:parse
-let parse_file f = Oasis_parser_co.parse_file ?size:None ~file:f ~p:parse
+let parse_file f = Oasis_parser_co.parse_file ~file:f ~p:parse
 
 

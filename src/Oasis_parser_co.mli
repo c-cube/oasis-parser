@@ -18,35 +18,13 @@ end
 
 type position
 
-type input = {
-  is_done : unit -> bool; (** End of input? *)
-  cur : unit -> char;  (** Current char *)
-  next : unit -> char;
-    (** Returns current char;
-        if not {!is_done}, move to next char,
-        otherwise throw ParseError *)
+type state
 
-  pos : unit -> position;   (** Current pos *)
-  lnum : unit -> line_num; (** Line number *)
-  cnum : unit -> col_num;  (** Column number *)
-  memo : MemoTbl.t; (** Memoization table, if any *)
-  backtrack : position -> unit;  (** Restore to previous pos *)
-  sub : int -> int -> string; (** [sub pos len] extracts slice from [pos] with [len] *)
-}
-(** The type of input, which must allow for backtracking somehow.
-    This type is {b unstable} and its details might change. *)
-
-val input_of_string : string -> input
-(** Parse the string *)
-
-val input_of_chan : ?size:int -> in_channel -> input
-(** [input_of_chan ic] reads lazily the content of [ic] as parsing goes.
-    All content that is read is saved to an internal buffer for backtracking.
-    @param size number of bytes read at once from [ic] *)
+val state_of_string : string -> state
 
 (** {2 Combinators} *)
 
-type 'a t = input -> ok:('a -> unit) -> err:(exn -> unit) -> unit
+type 'a t = state -> ok:('a -> unit) -> err:(exn -> unit) -> unit
 (** Takes the input and two continuations:
     {ul
       {- [ok] to call with the result when it's done}
@@ -204,7 +182,7 @@ val get_pos : (int * int) t
     Those functions have a label [~p] on the parser, since 0.14.
 *)
 
-val parse : input:input -> p:'a t -> 'a
+val parse : state -> p:'a t -> 'a
 (** [parse ~input p] applies [p] on the input, and returns [`Ok x] if
     [p] succeeds with [x], or [`Error s] otherwise
     @raise ParseError if it fails *)
@@ -213,10 +191,9 @@ val parse_string : string -> p:'a t -> 'a
 (** Specialization of {!parse} for string inputs
     @raise ParseError if it fails *)
 
-val parse_file : ?size:int -> file:string -> p:'a t -> 'a
+val parse_file : file:string -> p:'a t -> 'a
 (** [parse_file ~file p] parses [file] with [p] by opening the file
     and using {!input_of_chan}.
-    @param size size of chunks read from file
     @raise ParseError if it fails *)
 
 (** {2 Infix} *)

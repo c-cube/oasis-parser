@@ -20,7 +20,7 @@ let check_file conf file =
     then List.iter (Format.printf "%a@." A.pp_top_stmt) stmts;
   with e ->
     let stack = Printexc.get_backtrace() in
-    Format.printf "error: %s%s@." (Printexc.to_string e) stack;
+    Format.printf "error: %s@,%s@." (Printexc.to_string e) stack;
     exit 1
 
 let () =
