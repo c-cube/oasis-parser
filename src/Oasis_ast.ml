@@ -24,9 +24,9 @@ let e_and a b = E_and (a,b)
 let e_or a b = E_or (a,b)
 
 type field_op =
-  | F_set of string
-  | F_add of string
-  | F_eval of expr
+  | F_set of string  (* foo: bar *)
+  | F_add of string  (* foo+: bar *)
+  | F_eval of expr   (* foo$: bar *)
 
 let f_set s = F_set s
 let f_add s = F_add s
@@ -35,11 +35,9 @@ let f_eval e = F_eval e
 type stmt =
   | S_field of name * field_op
   | S_if of expr * stmt * stmt
-  | S_block of stmt list
 
 let s_field n o = S_field (n,o)
 let s_if a b c = S_if (a,b,c)
-let s_block l = S_block l
 
 type toplevel_decl =
   | Library
@@ -50,12 +48,10 @@ type toplevel_decl =
   | Document
 
 type top_stmt =
-  | TS_decl of toplevel_decl * name * stmt
+  | TS_decl of toplevel_decl * name * stmt list
   | TS_stmt of stmt
-  | TS_block of top_stmt list
 
 let ts_decl d n s = TS_decl (d,n,s)
 let ts_stmt s = TS_stmt s
-let ts_block l = TS_block l
 
 
