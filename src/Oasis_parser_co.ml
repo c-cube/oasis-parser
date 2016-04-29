@@ -175,8 +175,12 @@ let try_ : 'a t -> 'a t
 
 let (<?>) : 'a t -> string -> 'a t
   = fun x msg st ~ok ~err ->
+    let i = st.i in
     x st ~ok
-      ~err:(fun _ -> fail_ ~err st (fun () -> msg))
+      ~err:(fun e ->
+        if st.i = i
+        then fail_ ~err st (fun () -> msg)
+        else err e)
 
 let string s st ~ok ~err =
   let rec check i =

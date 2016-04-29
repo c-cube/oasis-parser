@@ -72,31 +72,35 @@ let parse_expr : A.expr P.t =
    @param acc the current list of lines *)
 let rec parse_block_rec indent acc : string list P.t =
   parse_indent >>= fun i ->
-  if i>indent then P.failf "expected indentation %d, not %d" indent i
-  else if i<indent then P.return (List.rev acc)
+  if i<indent then P.return (List.rev acc) (* dedent *)
   else (
     (* same indent, try to parse another line *)
-    (P.try_ empty_line >|= fun _ -> List.rev acc)
+    (P.try_ P.endline >|= fun _ -> List.rev acc)
     <|>
-      (((P.chars1_if (fun c->c <> '\n') <* P.endline) <?> "expected non-empty line")
+    (
+      ((P.chars1_if (fun c->c <> '\n') <* P.endline) <?> "expected non-empty line")
       >>= fun line ->
       let line = String.trim line in
       (* line with only a ".": replace with blank line *)
       let line = if line = "." then "" else line in
-      parse_block_rec indent (line :: acc))
+      parse_block_rec indent (line :: acc)
+    )
   )
 
 (* entry point for parsing a multiline block.
    if the current line is empty, it checks that the next line
    has indentation > indent;
    else it starts reading the block on the same line *)
-let parse_block : string list P.t =
-  P.skip_space *> P.get_cnum >>= fun indent ->
+let parse_block indent : string list P.t =
   (P.try_ P.endline *> parse_indent >>= fun i' ->
-    if i' <= indent then P.fail "wrong indentation, expected indented block"
-    else parse_block_rec i' []
+   if i' <= indent
+   then P.failf "wrong indentation, expected indented block > %d, got %d" indent i'
+   else parse_block_rec i' []
   )
-  <|> parse_block_rec indent []
+  <|>
+    (parse_indent >>= fun indent' ->
+     assert (indent' >= indent);
+     parse_block_rec indent' [])
 
 type field_sep =
   | FS_colon
@@ -115,20 +119,24 @@ let rec parse_if indent : A.stmt P.t =
   >>= fun a ->
   parse_indent >>= fun i1 ->
   if i1 <= indent then P.failf "after `if`, expected indent > %d" indent
-  else parse_stmt i1 <* eat_line >>= fun b ->
+  else parse_stmts i1 [] >>= fun b ->
   parse_indent >>= fun i ->
-  if i <> indent then P.failf "after `if`, expected `else` at level %d" indent
+  if i > indent then P.failf "after `if`, expected `else` at level %d" indent
   else (
-    eat_line *> parse_indent >>= fun i2 ->
-    if i1<>i2 then P.failf "after `else`, expected consistent indent %d" i1
-    else parse_stmt i1 <* eat_line >>= fun c -> P.return (A.s_if a b c)
+    (
+      P.try_ (P.string "else") *> eat_line *> parse_indent >>= fun i2 ->
+      if i1<>i2 then P.failf "after `else`, expected consistent indent %d" i1
+      else parse_stmts i1 [] >>= fun c -> P.return (A.s_if a b c)
+    )
+    <|> P.return (A.s_if a b []) (* no 'else' *)
   )
 
 and parse_field : A.stmt P.t =
-  P.chars1_if P.is_alpha_num <* P.skip_space >>= fun fname ->
+  parse_indent >>= fun indent ->
+  P.try_ (P.chars1_if P.is_alpha_num) <* P.skip_space >>= fun fname ->
   (parse_field_sep >>= function
-    | FS_colon -> parse_block >|= fun b -> A.f_set b
-    | FS_add -> parse_block >|= fun b -> A.f_add b
+    | FS_colon -> parse_block indent >|= fun b -> A.f_set b
+    | FS_add -> parse_block indent >|= fun b -> A.f_add b
     | FS_eval -> parse_expr >|= fun e -> A.f_eval e
   ) >|= A.s_field fname
 
@@ -141,7 +149,7 @@ and parse_stmt indent : A.stmt P.t =
     <?> "expected statement"
   ) else P.failf "parse_stmt: wrong indentation (expected %d, got %d)" indent indent'
 
-let rec parse_stmts indent acc =
+and parse_stmts indent acc =
   P.skip empty_line *> P.skip_space *>
   parse_indent >>= fun indent' ->
   if indent' < indent then
@@ -169,6 +177,7 @@ let parse_top_stmt : A.top_stmt P.t =
   let parse_decl =
     P.try_ (
       P.chars1_if P.is_alpha_num >>= function
+      | "Flag" -> P.return A.Flag
       | "Library" -> P.return A.Library
       | "Executable" -> P.return A.Executable
       | "Object" -> P.return A.Object

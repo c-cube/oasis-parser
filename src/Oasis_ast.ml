@@ -35,12 +35,13 @@ let f_eval e = F_eval e
 
 type stmt =
   | S_field of name * field_op
-  | S_if of expr * stmt * stmt
+  | S_if of expr * stmt list * stmt list
 
 let s_field n o = S_field (n,o)
 let s_if a b c = S_if (a,b,c)
 
 type toplevel_decl =
+  | Flag
   | Library
   | Object
   | Executable
@@ -84,12 +85,13 @@ let rec pp_stmt out s =
       Format.fprintf out "@[%s$: @[<hv>%a@]@]" n pp_expr e
     | S_if (e, a, b) ->
       Format.fprintf out "@[<v>if @[<h>%a@]@ @[<2>  %a@]@ else@ @[<2>  %a@]@]"
-        pp_expr e pp_stmt a pp_stmt b
+        pp_expr e (pp_list pp_stmt) a (pp_list pp_stmt) b
 
 let pp_top_stmt out st =
   let pp_decl out d =
     Format.fprintf out "%s"
       (match d with
+        | Flag -> "Flag"
         | Library -> "Library"
         | Object -> "Object"
         | Executable -> "Executable"

@@ -126,7 +126,8 @@ val (<|>) : 'a t -> 'a t -> 'a t
     to parse [b], otherwise it fails as [a] *)
 
 val (<?>) : 'a t -> string -> 'a t
-(** [a <?> msg] behaves like [a], but if [a] fails it fails with [msg]
+(** [a <?> msg] behaves like [a], but if [a] fails without
+    consuming any input, it fails with [msg]
     instead. Useful as the last choice in a series of [<|>]:
     [a <|> b <|> c <?> "expected a|b|c"] *)
 
