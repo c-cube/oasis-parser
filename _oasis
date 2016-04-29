@@ -10,4 +10,12 @@ Library oasis_parser
   Path:       src/
   BuildTools: ocamlbuild
   Modules:    Oasis_ast, Oasis_parser, Oasis_parser_co
+
+Executable oasis_check
+  Path:         src/tools/
+  MainIs:       oasis_check.ml
+  BuildDepends: oasis_parser
+  Install:      false
+  CompiledObject: best
+  BuildTools:   ocamlbuild
   
