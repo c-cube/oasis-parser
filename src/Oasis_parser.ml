@@ -70,6 +70,9 @@ let parse_expr : A.expr P.t =
   in
   suspend_ "expr" top
 
+let rest_of_line : string P.t =
+  (P.chars1_if (fun c->c <> '\n') <* P.endline) <?> "expected non-empty line"
+
 (* parse a block of strings at given indentation.
    @param acc the current list of lines *)
 let rec parse_block_rec indent acc : string list P.t =
@@ -80,27 +83,33 @@ let rec parse_block_rec indent acc : string list P.t =
   ( if i<indent then P.return (List.rev acc) (* dedent *)
     else (
       (* same indent, try to parse another line *)
-      ((P.chars1_if (fun c->c <> '\n') <* P.endline) <?> "expected non-empty line")
-      >>= fun line ->
-      let line = String.trim line in
+      rest_of_line >|= String.trim >>= fun line ->
       (* line with only a ".": replace with blank line *)
       let line = if line = "." then "" else line in
       parse_block_rec indent (line :: acc)
-    ))
+    )
+  )
 
 (* entry point for parsing a multiline block.
    if the current line is empty, it checks that the next line
-   has indentation > indent;
-   else it starts reading the block on the same line *)
+   has indentation > indent and parses a block of same indentation;
+   else it reads it and tries to read an indented block on next lines *)
 let parse_block indent : string list P.t =
-  ( P.try_ P.endline *> parse_indent >>= fun i' ->
-    if i' <= indent
-    then P.failf "wrong indentation, expected indented block > %d, got %d" indent i'
-    else P.parsing "indented block" (parse_block_rec i' []))
-  <|>
-  ( parse_indent >>= fun indent' ->
-    assert (indent' >= indent);
-    P.parsing "indented block" (parse_block_rec indent' []))
+  P.skip_space *> eat_comment *>
+  ( (* indented block after the newline *)
+    ( P.try_ P.endline *> parse_indent >>= fun i' ->
+      if i' <= indent
+      then P.fail "expected non-empty indented block"
+      else P.parsing "indented block" (parse_block_rec i' []))
+    <|>
+    (* start block on same line, maybe continue it after indentation *)
+    ( P.try_ rest_of_line >|= String.trim >>= fun x ->
+      parse_indent >>= fun i' ->
+      if i' <= indent
+      then P.return [x]
+      else P.parsing "indented block" (parse_block_rec i' [x]))
+    <?> "expected indented block"
+  )
 
 type field_sep =
   | FS_colon
@@ -138,8 +147,7 @@ and parse_elses indent =
   )
   <|> P.return ([], []) (* no 'else' *)
 
-and parse_field : A.stmt P.t =
-  parse_indent >>= fun indent ->
+and parse_field indent : A.stmt P.t =
   P.try_ (P.chars1_if P.is_alpha_num) <* P.skip_space >>= fun fname ->
   (parse_field_sep >>= function
     | FS_colon -> parse_block indent >|= fun b -> A.f_set b
@@ -150,9 +158,10 @@ and parse_field : A.stmt P.t =
 (* atomic statement: field/if *)
 and parse_stmt indent : A.stmt P.t =
   parse_indent >>= fun indent' ->
-  if indent=indent' then (
-    parse_if indent
-    <|> parse_field
+  if indent=indent'
+  then (
+        P.parsing "if statement" (parse_if indent)
+    <|> P.parsing "field statement" (parse_field indent)
     <?> "expected statement"
   ) else P.failf "parse_stmt: wrong indentation (expected %d, got %d)" indent indent'
 
@@ -174,7 +183,7 @@ let parse_top_decl : A.toplevel_decl -> A.top_stmt P.t
     P.endline *> parse_indent >>= fun indent ->
     if indent=1 then P.fail "expected indented list of statements"
     else (
-      parse_stmts indent [] >|= fun l ->
+      P.parsing "indented statements" (parse_stmts indent []) >|= fun l ->
       A.ts_decl decl name l
     )
 
@@ -195,7 +204,7 @@ let parse_top_stmt : A.top_stmt P.t =
   in
   parse_indent >>= fun indent ->
   if indent<>1 then P.fail "toplevel statement cannot be indented"
-  else (
+  else P.parsing "top statement" (
     parse_decl
     <|> (parse_stmt indent >|= A.ts_stmt)
   )
