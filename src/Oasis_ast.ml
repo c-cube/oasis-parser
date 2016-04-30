@@ -76,7 +76,9 @@ let rec pp_list pp out = function
   | x :: tail ->
     Format.fprintf out "%a@,%a" pp x (pp_list pp) tail
 
-let pp_str = Format.pp_print_string
+let pp_str out = function
+  | "" -> Format.pp_print_string out "."
+  | s -> Format.pp_print_string out s
 
 let rec pp_stmt out s =
   match s with
