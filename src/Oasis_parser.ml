@@ -75,7 +75,7 @@ let parse_expr : A.expr P.t =
 let rec parse_block_rec indent acc : string list P.t =
   parse_indent >>= fun i ->
   (* skip empty lines *)
-  (P.try_ P.endline *> parse_block_rec indent acc)
+  (eat_comment *> P.try_ P.endline *> parse_block_rec indent acc)
   <|>
   ( if i<indent then P.return (List.rev acc) (* dedent *)
     else (
