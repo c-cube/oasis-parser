@@ -6,8 +6,10 @@
 type line_num = int
 type col_num = int
 
-exception ParseError of line_num * col_num * (unit -> string)
-(** position * message *)
+type parse_branch
+
+exception ParseError of parse_branch * (unit -> string)
+(** parsing branch * message *)
 
 (** {2 Input} *)
 
@@ -60,6 +62,10 @@ val fail : string -> 'a t
 
 val failf: ('a, unit, string, 'b t) format4 -> 'a
 (** [Format.sprintf] version of {!fail} *)
+
+val parsing : string -> 'a t -> 'a t
+(** [parsing s p] behaves the same as [p], with the information that
+    we are parsing [s], if [p] fails *)
 
 val eoi : unit t
 (** Expect the end of input, fails otherwise *)
@@ -134,6 +140,10 @@ val (<?>) : 'a t -> string -> 'a t
 val try_ : 'a t -> 'a t
 (** [try_ p] tries to parse like [p], but backtracks if [p] fails.
     Useful in combination with [<|>] *)
+
+val suspend : (unit -> 'a t) -> 'a t
+(** [suspend f] is  the same as [f ()], but evaluates [f ()] only
+    when needed *)
 
 val string : string -> string t
 (** [string s] parses exactly the string [s], and nothing else *)
@@ -210,36 +220,4 @@ module Infix : sig
   val (&&&) : (char -> bool) -> (char -> bool) -> char -> bool
   val (<|>) : 'a t -> 'a t -> 'a t
   val (<?>) : 'a t -> string -> 'a t
-end
-
-(** {2 Utils} *)
-
-module U : sig
-  val list : ?start:string -> ?stop:string -> ?sep:string -> 'a t -> 'a list t
-  (** [list p] parses a list of [p], with the OCaml conventions for
-      start token "[", stop token "]" and separator ";".
-      Whitespace between items are skipped *)
-
-  val int : int t
-
-  val word : string t
-  (** non empty string of alpha num, start with alpha *)
-
-  val map : ('a -> 'b) -> 'a t -> 'b t
-
-  val map2 : ('a -> 'b -> 'c) -> 'a t -> 'b t -> 'c t
-
-  val map3 : ('a -> 'b -> 'c -> 'd) -> 'a t -> 'b t -> 'c t -> 'd t
-
-  val pair : ?start:string -> ?stop:string -> ?sep:string ->
-             'a t -> 'b t -> ('a * 'b) t
-  (** Parse a pair using OCaml whitespace conventions.
-      The default is "(a, b)".
-      @since 0.14 *)
-
-  val triple : ?start:string -> ?stop:string -> ?sep:string ->
-               'a t -> 'b t -> 'c t -> ('a * 'b * 'c) t
-  (** Parse a triple using OCaml whitespace conventions.
-      The default is "(a, b, c)".
-      @since 0.14 *)
 end

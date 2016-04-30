@@ -16,20 +16,30 @@ type memo_ = (unit -> unit) H.t lazy_t
 
 type position = int * int * int (* pos, line, column *)
 
+type parse_branch = (line_num * col_num * string) list
+
 type state = {
   str: string; (* the input *)
   mutable i: int; (* offset *)
   mutable lnum : line_num; (* Line number *)
-  mutable cnum : col_num;  (* Column number *)
+  mutable cnum : col_num; (* Column number *)
+  mutable branch: parse_branch;
   memo : memo_; (* Memoization table, if any *)
 }
 
-exception ParseError of line_num * col_num * (unit -> string)
+exception ParseError of parse_branch * (unit -> string)
+
+let rec pp_branch () = function
+  | [] -> ""
+  | [l,c,s] ->
+    Format.sprintf "@[at line %d, col %d%s@]" l c s
+  | (l,c,s) :: tail ->
+    Format.sprintf "@[at line %d, col %d%s@]@,%a" l c s pp_branch tail
 
 let () = Printexc.register_printer
     (function
-      | ParseError (l,c,msg) ->
-        Some (Printf.sprintf "at line %d, col %d: %s" l c (msg ()))
+      | ParseError (b,msg) ->
+        Some (Format.sprintf "@[<v>%s@ %a@]" (msg()) pp_branch b)
       | _ -> None)
 
 let const_ x () = x
@@ -40,6 +50,7 @@ let state_of_string str =
     i=0;
     lnum=1;
     cnum=1;
+    branch=[];
     memo=lazy (H.create 32);
   } in
   s
@@ -47,9 +58,13 @@ let state_of_string str =
 let is_done st = st.i = String.length st.str
 let cur st = st.str.[st.i]
 
+let fail_ ~err st msg =
+  let b = (st.lnum, st.cnum, "") :: st.branch in
+  err (ParseError (b, msg))
+
 let next st ~ok ~err =
   if st.i = String.length st.str
-  then err (ParseError (st.lnum, st.cnum, const_ "unexpected EOI"))
+  then fail_ st ~err (const_ "unexpected EOI")
   else (
     let c = st.str.[st.i] in
     st.i <- st.i + 1;
@@ -92,8 +107,6 @@ let ( *>) : _ t -> 'a t -> 'a t
     x st ~err ~ok:(fun _ -> y st ~err ~ok)
 
 let junk_ st = next st ~err:(fun _ -> assert false) ~ok:ignore
-let pf = Printf.sprintf
-let fail_ ~err st msg = err (ParseError (st.lnum, st.cnum, msg))
 
 let eoi st ~ok ~err =
   if is_done st
@@ -103,10 +116,16 @@ let eoi st ~ok ~err =
 let fail msg st ~ok:_ ~err = fail_ ~err st (const_ msg)
 let failf msg = Printf.ksprintf fail msg
 
+let parsing s p st ~ok ~err =
+  st.branch <- (st.lnum, st.cnum, ", parsing " ^s) :: st.branch;
+  p st
+    ~ok:(fun x -> st.branch <- List.tl st.branch; ok x)
+    ~err:(fun e -> st.branch <- List.tl st.branch; err e)
+
 let nop _ ~ok ~err:_ = ok()
 
 let char c =
-  let msg = pf "expected '%c'" c in
+  let msg = Printf.sprintf "expected '%c'" c in
   fun st ~ok ~err ->
     next st ~err
       ~ok:(fun c' -> if c=c' then ok c else fail_ ~err st (const_ msg))
@@ -115,7 +134,7 @@ let char_if p st ~ok ~err =
   next st ~err
     ~ok:(fun c ->
       if p c then ok c
-      else fail_ ~err st (fun () -> pf "unexpected char '%c'" c)
+      else fail_ ~err st (fun () -> Printf.sprintf "unexpected char '%c'" c)
     )
 
 let chars_if p st ~ok ~err:_ =
@@ -170,9 +189,11 @@ let (<|>) : 'a t -> 'a t -> 'a t
 
 let try_ : 'a t -> 'a t
   = fun p st ~ok ~err ->
-    let pos = pos st in
+    let i = pos st in
     p st ~ok
-      ~err:(fun e -> backtrack st pos; err e)
+      ~err:(fun e -> backtrack st i; err e)
+
+let suspend f st ~ok ~err = f () st ~ok ~err
 
 let (<?>) : 'a t -> string -> 'a t
   = fun x msg st ~ok ~err ->
@@ -191,7 +212,7 @@ let string s st ~ok ~err =
         ~ok:(fun c ->
           if c = s.[i]
           then check (i+1)
-          else fail_ ~err st (fun () -> pf "expected \"%s\"" s))
+          else fail_ ~err st (fun () -> Printf.sprintf "expected \"%s\"" s))
   in
   check 0
 
@@ -341,44 +362,4 @@ module Infix = struct
   let (&&&) = (&&&)
   let (<|>) = (<|>)
   let (<?>) = (<?>)
-end
-
-module U = struct
-  let sep_ = sep
-
-  let list ?(start="[") ?(stop="]") ?(sep=";") p =
-    string start *> skip_white *>
-    sep_ ~by:(skip_white *> string sep *> skip_white) p <*
-    skip_white <* string stop
-
-  let int =
-    chars1_if (is_num ||| (=) '-')
-    >>= fun s ->
-    try return (int_of_string s)
-    with Failure _ -> fail "expected an int"
-
-  let map f x = x >|= f
-  let map2 f x y = pure f <*> x <*> y
-  let map3 f x y z = pure f <*> x <*> y <*> z
-
-  let prepend_str c s = String.make 1 c ^ s
-
-  let word =
-    map2 prepend_str (char_if is_alpha) (chars_if is_alpha_num)
-
-  let pair ?(start="(") ?(stop=")") ?(sep=",") p1 p2 =
-    string start *> skip_white *>
-    p1 >>= fun x1 ->
-    skip_white *> string sep *> skip_white *>
-    p2 >>= fun x2 ->
-    string stop *> return (x1,x2)
-
-  let triple ?(start="(") ?(stop=")") ?(sep=",") p1 p2 p3 =
-    string start *> skip_white *>
-    p1 >>= fun x1 ->
-    skip_white *> string sep *> skip_white *>
-    p2 >>= fun x2 ->
-    skip_white *> string sep *> skip_white *>
-    p3 >>= fun x3 ->
-    string stop *> return (x1,x2,x3)
 end

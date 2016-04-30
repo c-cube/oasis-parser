@@ -39,7 +39,7 @@ let parse_flag =
   >|= A.e_flag
 
 let parse_test =
-  P.try_ (P.chars1_if P.is_alpha_num) <* P.skip_space >>= fun t ->
+  P.try_ parse_name <* P.skip_space >>= fun t ->
   P.char '(' *> P.skip_space *> parse_name <* P.skip_space <* P.char ')' >|= fun v ->
   A.e_test t v
 
@@ -47,61 +47,60 @@ let parse_binop =
   (P.try_ (P.string "&&") *> P.return `And)
   <|> (P.try_ (P.string "||") *> P.return `Or)
 
+let suspend_ s p = P.parsing s (P.suspend p)
+
 let parse_expr : A.expr P.t =
-  P.fix_memo
-    (fun self ->
-       let atomic =
-         (P.try_ (P.char '(') *> self <* P.skip_space <* P.char ')')
-         <|> (P.try_ (P.string "true") *> P.return A.e_true)
-         <|> (P.try_ (P.string "false") *> P.return A.e_false)
-         <|> parse_flag
-         <|> parse_test
-       in
-       P.skip_space *> (
-         (P.try_ (P.char '!') *> P.skip_space *> self >|= A.e_not)
-         <|>
-         (atomic <* P.skip_space
-          >>= fun l ->
-           ( parse_binop <* P.skip_space >>= fun op ->
-             self >|= fun r ->
-             match op with `And -> A.e_and l r | `Or -> A.e_or l r)
-           <|> P.return l)
-         <?> "expected expression"
-       ))
+  let rec atomic () =
+    (P.try_ (P.char '(') *> suspend_ "expr" top <* P.skip_space <* P.char ')')
+    <|> (P.try_ (P.string "true") *> P.return A.e_true)
+    <|> (P.try_ (P.string "false") *> P.return A.e_false)
+    <|> parse_flag
+    <|> parse_test
+    <?> "expected atomic expression"
+  and unary() =
+    suspend_ "atomic expr" atomic
+    <|> (P.try_ (P.char '!') *> P.skip_space *> P.suspend unary >|= A.e_not)
+    <?> "expected expression"
+  and top () =
+    P.skip_space *> P.suspend unary <* P.skip_space >>= fun l ->
+    ( parse_binop <* P.skip_space >>= fun op ->
+      P.suspend top >|= fun r ->
+      match op with `And -> A.e_and l r | `Or -> A.e_or l r)
+    <|> P.return l
+  in
+  suspend_ "expr" top
 
 (* parse a block of strings at given indentation.
    @param acc the current list of lines *)
 let rec parse_block_rec indent acc : string list P.t =
   parse_indent >>= fun i ->
-  if i<indent then P.return (List.rev acc) (* dedent *)
-  else (
-    (* same indent, try to parse another line *)
-    (P.try_ P.endline >|= fun _ -> List.rev acc)
-    <|>
-    (
+  (* skip empty lines *)
+  (P.try_ P.endline *> parse_block_rec indent acc)
+  <|>
+  ( if i<indent then P.return (List.rev acc) (* dedent *)
+    else (
+      (* same indent, try to parse another line *)
       ((P.chars1_if (fun c->c <> '\n') <* P.endline) <?> "expected non-empty line")
       >>= fun line ->
       let line = String.trim line in
       (* line with only a ".": replace with blank line *)
       let line = if line = "." then "" else line in
       parse_block_rec indent (line :: acc)
-    )
-  )
+    ))
 
 (* entry point for parsing a multiline block.
    if the current line is empty, it checks that the next line
    has indentation > indent;
    else it starts reading the block on the same line *)
 let parse_block indent : string list P.t =
-  (P.try_ P.endline *> parse_indent >>= fun i' ->
-   if i' <= indent
-   then P.failf "wrong indentation, expected indented block > %d, got %d" indent i'
-   else parse_block_rec i' []
-  )
+  ( P.try_ P.endline *> parse_indent >>= fun i' ->
+    if i' <= indent
+    then P.failf "wrong indentation, expected indented block > %d, got %d" indent i'
+    else P.parsing "indented block" (parse_block_rec i' []))
   <|>
-    (parse_indent >>= fun indent' ->
-     assert (indent' >= indent);
-     parse_block_rec indent' [])
+  ( parse_indent >>= fun indent' ->
+    assert (indent' >= indent);
+    P.parsing "indented block" (parse_block_rec indent' []))
 
 type field_sep =
   | FS_colon
@@ -116,21 +115,28 @@ let parse_field_sep : field_sep P.t =
 
 (* parse a "if" statement *)
 let rec parse_if indent : A.stmt P.t =
-  P.try_ (P.string "if") *> parse_expr <* empty_line
-  >>= fun a ->
-  parse_indent >>= fun i1 ->
-  if i1 <= indent then P.failf "after `if`, expected indent > %d" indent
-  else parse_stmts i1 [] >>= fun b ->
-  parse_indent >>= fun i ->
-  if i > indent then P.failf "after `if`, expected `else` at level %d" indent
-  else (
-    (
-      P.try_ (P.string "else") *> empty_line *> parse_indent >>= fun i2 ->
-      if i1<>i2 then P.failf "after `else`, expected consistent indent %d" i1
-      else parse_stmts i1 [] >>= fun c -> P.return (A.s_if a b c)
-    )
-    <|> P.return (A.s_if a b []) (* no 'else' *)
+  P.try_ (P.string "if") *> parse_expr <* empty_line >>= fun e ->
+  parse_cond_branch indent >>= fun a ->
+  parse_elses indent >|= fun (l, c) -> A.s_if_l e a l c
+
+and parse_cond_branch indent =
+  parse_indent >>= fun sub_i ->
+  if sub_i <= indent then P.failf "after `if` or `else if`, expected indent > %d" indent
+  else parse_stmts sub_i []
+
+and parse_elses indent =
+  ( P.try_ (P.string "else") >>= fun _ ->
+    (* either simple "else" , or "else if" *)
+    ( P.try_ empty_line *> parse_indent *>
+      parse_cond_branch indent >|= fun c -> [], c)
+    <|>
+    ( P.skip_space *> P.string "if" *> P.skip_space *> parse_expr <* empty_line
+      >>= fun a' ->
+      parse_cond_branch indent
+      >>= fun b' ->
+      parse_elses indent >|= fun (l,c) -> (a',b') :: l, c)
   )
+  <|> P.return ([], []) (* no 'else' *)
 
 and parse_field : A.stmt P.t =
   parse_indent >>= fun indent ->
@@ -151,8 +157,7 @@ and parse_stmt indent : A.stmt P.t =
   ) else P.failf "parse_stmt: wrong indentation (expected %d, got %d)" indent indent'
 
 and parse_stmts indent acc =
-  P.skip empty_line *> P.skip_space *>
-  parse_indent >>= fun indent' ->
+  P.skip empty_line *> parse_indent >>= fun indent' ->
   if indent' < indent then
     if acc<>[]
     then P.return (List.rev acc)
@@ -205,7 +210,7 @@ let parse : A.top_stmt list P.t =
   in
   aux []
 
-let parse_string s = Oasis_parser_co.parse_string s ~p:parse
-let parse_file f = Oasis_parser_co.parse_file ~file:f ~p:parse
+let parse_string s = P.parse_string s ~p:parse
+let parse_file f = P.parse_file ~file:f ~p:parse
 
 
