@@ -40,7 +40,7 @@ configure:
 
 # OASIS_STOP
 
-TEST_FILES=$(wildcard ./tests/*)
+TEST_FILES=$(wildcard ./tests/*.oasis)
 
 test-checks:
 	@./oasis_check.native $(TEST_FILES)
