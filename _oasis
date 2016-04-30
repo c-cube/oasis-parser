@@ -18,4 +18,14 @@ Executable oasis_check
   Install:      false
   CompiledObject: best
   BuildTools:   ocamlbuild
-  
+
+# run `oasis_check`
+Test simple_checks
+  Command:      make test-checks
+  TestTools:    oasis_check
+
+# run `oasis_check --print | oasis_check`
+Test self_identity
+  Command:      make test-self-identity
+  TestTools:    oasis_check
+
