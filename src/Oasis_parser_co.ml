@@ -6,13 +6,25 @@
 type line_num = int
 type col_num = int
 
-module H = Hashtbl.Make(struct
-  type t = int * int  (* id of parser, position *)
-  let equal ((a,b):t)(c,d) = a=c && b=d
-  let hash = Hashtbl.hash
-end)
+module MemoTbl = struct
+  module H = Hashtbl.Make(struct
+      type t = int * int  (* id of parser, position *)
+      let equal ((a,b):t)(c,d) = a=c && b=d
+      let hash = Hashtbl.hash
+    end)
 
-type memo_ = (unit -> unit) H.t lazy_t
+  (* table of closures, used to implement universal type *)
+  type t = (unit -> unit) H.t lazy_t
+
+  let create n = lazy (H.create n)
+
+  (* unique ID for each parser *)
+  let id_ = ref 0
+
+  type 'a res =
+    | Fail of exn
+    | Ok of 'a
+end
 
 type position = int * int * int (* pos, line, column *)
 
@@ -24,12 +36,12 @@ type state = {
   mutable lnum : line_num; (* Line number *)
   mutable cnum : col_num; (* Column number *)
   mutable branch: parse_branch;
-  memo : memo_; (* Memoization table, if any *)
+  memo : MemoTbl.t; (* Memoization table, if any *)
 }
 
 exception ParseError of parse_branch * (unit -> string)
 
-let rec pp_branch () l =
+let rec string_of_branch l =
   let pp_s () = function
     | None -> ""
     | Some s -> Format.sprintf "while parsing %s, " s
@@ -39,12 +51,12 @@ let rec pp_branch () l =
   | [l,c,s] ->
     Format.sprintf "@[%aat line %d, col %d@]" pp_s s l c
   | (l,c,s) :: tail ->
-    Format.sprintf "@[%aat line %d, col %d@]@,%a" pp_s s l c pp_branch tail
+    Format.sprintf "@[%aat line %d, col %d@]@,%s" pp_s s l c (string_of_branch tail)
 
 let () = Printexc.register_printer
     (function
       | ParseError (b,msg) ->
-        Some (Format.sprintf "@[<v>%s@ %a@]" (msg()) pp_branch b)
+        Some (Format.sprintf "@[<v>%s@ %s@]" (msg()) (string_of_branch b))
       | _ -> None)
 
 let const_ x () = x
@@ -56,7 +68,7 @@ let state_of_string str =
     lnum=1;
     cnum=1;
     branch=[];
-    memo=lazy (H.create 32);
+    memo=MemoTbl.create 32;
   } in
   s
 
@@ -69,14 +81,13 @@ let fail_ ~err st msg =
 
 let next st ~ok ~err =
   if st.i = String.length st.str
-  then fail_ st ~err (const_ "unexpected EOI")
+  then fail_ st ~err (const_ "unexpected end of input")
   else (
     let c = st.str.[st.i] in
     st.i <- st.i + 1;
-    ( if c='\n'
-      then (st.lnum <- st.lnum + 1; st.cnum <- 1)
-      else st.cnum <- st.cnum + 1
-    );
+    if c='\n'
+    then (st.lnum <- st.lnum + 1; st.cnum <- 1)
+    else st.cnum <- st.cnum + 1;
     ok c
   )
 
@@ -88,10 +99,6 @@ let backtrack st (i',l',c') =
   st.lnum <- l';
   st.cnum <- c';
   ()
-
-let sub st j len =
-  assert (j + len <= st.i);
-  String.sub st.str j len
 
 type 'a t = state -> ok:('a -> unit) -> err:(exn -> unit) -> unit
 
@@ -127,9 +134,6 @@ let parsing s p st ~ok ~err =
     ~ok:(fun x -> st.branch <- List.tl st.branch; ok x)
     ~err:(fun e -> st.branch <- List.tl st.branch; err e)
 
-let parsingf s =
-  Format.ksprintf parsing s
-
 let nop _ ~ok ~err:_ = ok()
 
 let char c =
@@ -149,15 +153,14 @@ let chars_if p st ~ok ~err:_ =
   let i = st.i in
   let len = ref 0 in
   while not (is_done st) && p (cur st) do junk_ st; incr len done;
-  ok (sub st i !len)
+  ok (String.sub st.str i !len)
 
 let chars1_if p st ~ok ~err =
   chars_if p st ~err
     ~ok:(fun s ->
       if s = ""
       then fail_ ~err st (const_ "unexpected sequence of chars")
-      else ok s
-    )
+      else ok s)
 
 let rec skip_chars p st ~ok ~err =
   if not (is_done st) && p (cur st) then (
@@ -174,9 +177,6 @@ let is_alpha_num = function
   | _ -> false
 let is_space = function ' ' | '\t' -> true | _ -> false
 let is_white = function ' ' | '\t' | '\n' -> true | _ -> false
-let (~~~) p c = not (p c)
-let (|||) p1 p2 c = p1 c || p2 c
-let (&&&) p1 p2 c = p1 c && p2 c
 
 let space = char_if is_space
 let white = char_if is_white
@@ -240,8 +240,7 @@ let rec many_rec : 'a t -> 'a list -> 'a list t = fun p acc st ~ok ~err ->
         many_rec p (x :: acc) st ~ok
           ~err:(fun _ ->
             backtrack st i;
-            ok(List.rev acc)
-          )
+            ok(List.rev acc))
       )
 
 let many : 'a t -> 'a list t
@@ -274,24 +273,6 @@ let sep ~by p =
      <|> return [x])
   <|> return []
 
-module MemoTbl = struct
-  (* table of closures, used to implement universal type *)
-  type t = memo_
-
-  let create n = lazy (H.create n)
-
-  (* unique ID for each parser *)
-  let id_ = ref 0
-
-  type 'a res =
-    | Fail of exn
-    | Ok of 'a
-end
-
-let fix f =
-  let rec p st ~ok ~err = f p st ~ok ~err in
-  p
-
 let memo (type a) (p:a t):a t =
   let id = !MemoTbl.id_ in
   incr MemoTbl.id_;
@@ -300,7 +281,7 @@ let memo (type a) (p:a t):a t =
     let i = st.i in
     let (lazy tbl) = st.memo in
     try
-      let f = H.find tbl (i,id) in
+      let f = MemoTbl.H.find tbl (i,id) in
       (* extract hidden value *)
       r := None;
       f ();
@@ -313,20 +294,11 @@ let memo (type a) (p:a t):a t =
       (* parse, and save *)
       p st
         ~err:(fun e ->
-          H.replace tbl (i,id) (fun () -> r := Some (MemoTbl.Fail e));
-          err e
-        )
+          MemoTbl.H.replace tbl (i,id) (fun () -> r := Some (MemoTbl.Fail e));
+          err e)
         ~ok:(fun x ->
-          H.replace tbl (i,id) (fun () -> r := Some (MemoTbl.Ok x));
-          ok x
-        )
-
-let fix_memo f =
-  let rec p =
-    let p' = lazy (memo p) in
-    fun st ~ok ~err -> f (Lazy.force p') st ~ok ~err
-  in
-  p
+          MemoTbl.H.replace tbl (i,id) (fun () -> r := Some (MemoTbl.Ok x));
+          ok x)
 
 let get_lnum = fun st ~ok ~err:_ -> ok st.lnum
 let get_cnum = fun st ~ok ~err:_ -> ok st.cnum
@@ -363,7 +335,7 @@ let parse_file ~file ~p =
     close_in ic;
     res
   with e ->
-    close_in ic;
+    close_in_noerr ic;
     raise e
 
 module Infix = struct
@@ -372,9 +344,6 @@ module Infix = struct
   let (<*>) = (<*>)
   let (<* ) = (<* )
   let ( *>) = ( *>)
-  let (~~~) = (~~~)
-  let (|||) = (|||)
-  let (&&&) = (&&&)
   let (<|>) = (<|>)
   let (<?>) = (<?>)
 end

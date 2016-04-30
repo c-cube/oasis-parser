@@ -8,15 +8,12 @@ type col_num = int
 
 type parse_branch
 
+val string_of_branch : parse_branch -> string
+
 exception ParseError of parse_branch * (unit -> string)
 (** parsing branch * message *)
 
 (** {2 Input} *)
-
-module MemoTbl : sig
-  type t
-  val create: int -> t (** New memoization table *)
-end
 
 type position
 
@@ -66,8 +63,6 @@ val failf: ('a, unit, string, 'b t) format4 -> 'a
 val parsing : string -> 'a t -> 'a t
 (** [parsing s p] behaves the same as [p], with the information that
     we are parsing [s], if [p] fails *)
-
-val parsingf : ('a, unit, string, 'b t -> 'b t) format4 -> 'a
 
 val eoi : unit t
 (** Expect the end of input, fails otherwise *)
@@ -119,15 +114,6 @@ val is_space : char -> bool
 val is_white : char -> bool
 (** True on ' ' and '\t' and '\n' *)
 
-val (~~~) : (char -> bool) -> char -> bool
-(** Negation on predicates *)
-
-val (|||) : (char -> bool) -> (char -> bool) -> char -> bool
-(** Disjunction on predicates *)
-
-val (&&&) : (char -> bool) -> (char -> bool) -> char -> bool
-(** Conjunction on predicates *)
-
 val (<|>) : 'a t -> 'a t -> 'a t
 (** [a <|> b] tries to parse [a], and if [a] fails without
     consuming any input, backtracks and tries
@@ -165,9 +151,6 @@ val sep : by:_ t -> 'a t -> 'a list t
 val sep1 : by:_ t -> 'a t -> 'a list t
 (** [sep1 ~by p] parses a non empty list of [p], separated by [by] *)
 
-val fix : ('a t -> 'a t) -> 'a t
-(** Fixpoint combinator *)
-
 val memo : 'a t -> 'a t
 (** Memoize the parser. [memo p] will behave like [p], but when called
     in a state (read: position in input) it has already processed, [memo p]
@@ -177,9 +160,6 @@ val memo : 'a t -> 'a t
     is a lot of backtracking involving [p].
 
     This function is not thread-safe. *)
-
-val fix_memo : ('a t -> 'a t) -> 'a t
-(** Same as {!fix}, but the fixpoint is memoized. *)
 
 val get_lnum : int t
 (** Reflects the current line number *)
@@ -217,9 +197,6 @@ module Infix : sig
   val (<*>) : ('a -> 'b) t -> 'a t -> 'b t
   val (<* ) : 'a t -> _ t -> 'a t
   val ( *>) : _ t -> 'a t -> 'a t
-  val (~~~) : (char -> bool) -> char -> bool
-  val (|||) : (char -> bool) -> (char -> bool) -> char -> bool
-  val (&&&) : (char -> bool) -> (char -> bool) -> char -> bool
   val (<|>) : 'a t -> 'a t -> 'a t
   val (<?>) : 'a t -> string -> 'a t
 end
