@@ -65,10 +65,10 @@ let rec pp_expr out = function
   | E_true -> Format.fprintf out "true"
   | E_false -> Format.fprintf out "false"
   | E_and (a,b) ->
-    Format.fprintf out "(@[@[%a@]@ && @[%a@]@])" pp_expr a pp_expr b
+    Format.fprintf out "(%a@ && %a)" pp_expr a pp_expr b
   | E_or (a,b) ->
-    Format.fprintf out "(@[@[%a@]@ || @[%a@]@])" pp_expr a pp_expr b
-  | E_not e -> Format.fprintf out "!@[%a@]" pp_expr e
+    Format.fprintf out "(%a@ || %a)" pp_expr a pp_expr b
+  | E_not e -> Format.fprintf out "!%a" pp_expr e
 
 let rec pp_list pp out = function
   | [] -> ()
@@ -89,7 +89,7 @@ let rec pp_stmt out s =
       Format.fprintf out "@[%s+: @[<v>%a@]@]" n
         (pp_list pp_str) l
     | S_field (n, F_eval e) ->
-      Format.fprintf out "@[%s$: @[<hv>%a@]@]" n pp_expr e
+      Format.fprintf out "@[%s$: @[<h>%a@]@]" n pp_expr e
     | S_if (e, a, [], []) ->
       Format.fprintf out "@[<v>if @[<h>%a@]@ @[<2>  %a@]@]"
         pp_expr e (pp_list pp_stmt) a
