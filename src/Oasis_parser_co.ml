@@ -127,8 +127,9 @@ let chars_if p st ~ok ~err:_ =
 let chars1_if p st ~ok ~err =
   chars_if p st ~err
     ~ok:(fun s ->
-      if s = "" then fail_ ~err st (const_ "unexpected sequence of chars");
-      ok s
+      if s = ""
+      then fail_ ~err st (const_ "unexpected sequence of chars")
+      else ok s
     )
 
 let rec skip_chars p st ~ok ~err =
