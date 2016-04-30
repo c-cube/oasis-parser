@@ -16,7 +16,7 @@ type memo_ = (unit -> unit) H.t lazy_t
 
 type position = int * int * int (* pos, line, column *)
 
-type parse_branch = (line_num * col_num * string) list
+type parse_branch = (line_num * col_num * string option) list
 
 type state = {
   str: string; (* the input *)
@@ -29,12 +29,17 @@ type state = {
 
 exception ParseError of parse_branch * (unit -> string)
 
-let rec pp_branch () = function
+let rec pp_branch () l =
+  let pp_s () = function
+    | None -> ""
+    | Some s -> Format.sprintf "while parsing %s, " s
+  in
+  match l with
   | [] -> ""
   | [l,c,s] ->
-    Format.sprintf "@[at line %d, col %d%s@]" l c s
+    Format.sprintf "@[%aat line %d, col %d@]" pp_s s l c
   | (l,c,s) :: tail ->
-    Format.sprintf "@[at line %d, col %d%s@]@,%a" l c s pp_branch tail
+    Format.sprintf "@[%aat line %d, col %d@]@,%a" pp_s s l c pp_branch tail
 
 let () = Printexc.register_printer
     (function
@@ -59,7 +64,7 @@ let is_done st = st.i = String.length st.str
 let cur st = st.str.[st.i]
 
 let fail_ ~err st msg =
-  let b = (st.lnum, st.cnum, "") :: st.branch in
+  let b = (st.lnum, st.cnum, None) :: st.branch in
   err (ParseError (b, msg))
 
 let next st ~ok ~err =
@@ -117,10 +122,13 @@ let fail msg st ~ok:_ ~err = fail_ ~err st (const_ msg)
 let failf msg = Printf.ksprintf fail msg
 
 let parsing s p st ~ok ~err =
-  st.branch <- (st.lnum, st.cnum, ", parsing " ^s) :: st.branch;
+  st.branch <- (st.lnum, st.cnum, Some s) :: st.branch;
   p st
     ~ok:(fun x -> st.branch <- List.tl st.branch; ok x)
     ~err:(fun e -> st.branch <- List.tl st.branch; err e)
+
+let parsingf s =
+  Format.ksprintf parsing s
 
 let nop _ ~ok ~err:_ = ok()
 
@@ -170,9 +178,14 @@ let (~~~) p c = not (p c)
 let (|||) p1 p2 c = p1 c || p2 c
 let (&&&) p1 p2 c = p1 c && p2 c
 
-let endline = char '\n'
 let space = char_if is_space
 let white = char_if is_white
+
+let endline st ~ok ~err =
+  next st ~err
+    ~ok:(function
+      | '\n' as c -> ok c
+      | _ -> fail_ ~err st (const_ "expected end-of-line"))
 
 let skip_space = skip_chars is_space
 let skip_white = skip_chars is_white
@@ -191,7 +204,9 @@ let try_ : 'a t -> 'a t
   = fun p st ~ok ~err ->
     let i = pos st in
     p st ~ok
-      ~err:(fun e -> backtrack st i; err e)
+      ~err:(fun e ->
+        backtrack st i;
+        err e)
 
 let suspend f st ~ok ~err = f () st ~ok ~err
 

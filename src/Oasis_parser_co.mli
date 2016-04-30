@@ -67,6 +67,8 @@ val parsing : string -> 'a t -> 'a t
 (** [parsing s p] behaves the same as [p], with the information that
     we are parsing [s], if [p] fails *)
 
+val parsingf : ('a, unit, string, 'b t -> 'b t) format4 -> 'a
+
 val eoi : unit t
 (** Expect the end of input, fails otherwise *)
 
