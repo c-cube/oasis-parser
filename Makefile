@@ -43,11 +43,11 @@ configure:
 TEST_FILES=$(wildcard ./tests/*.oasis)
 
 test-checks:
-	@./oasis_check.native $(TEST_FILES)
+	@./oasis_check.native -d $(TEST_FILES)
 	@echo "test-checks successful"
 
 test-self-identity:
 	@for i in $(TEST_FILES) ; do \
-	  ./oasis_check.native "$i" --print | ./oasis_check.native ; \
+	  ./oasis_check.native -d "$i" --print | ./oasis_check.native ; \
 	done
 	@echo "test-self-identity successful"
