@@ -15,12 +15,18 @@ let print_pos (l,c) = Printf.sprintf "line %d, col %d" l c
 (* print error message when a leading tab is met *)
 let fail_tab (l,c) = P.failf "error: leading tab at %s\n%!" (print_pos (l,c))
 
+let comment = P.try_ (P.char '#') *> P.skip_chars (fun c->c <> '\n')
+
+let rec next_block () =
+  P.skip_space *>
+  ( (comment *> P.endline *> P.suspend next_block)
+    <|> P.nop
+  )
+
 (* parse leading indentation, return new indentation *)
-let parse_indent : int P.t = P.skip_space *> P.get_cnum
+let parse_indent : int P.t = next_block () *> P.get_cnum
 
-let eat_comment =
-  (P.try_ (P.char '#') *> P.skip_chars (fun c->c <> '\n')) <|> P.nop
-
+let eat_comment = comment <|> P.nop
 let empty_line : char P.t = P.skip_space *> eat_comment *> P.endline
 
 (* char belonging to a name *)
