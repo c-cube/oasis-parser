@@ -1,0 +1,315 @@
+OASISFormat:  0.3
+OCamlVersion: >= 3.11.2
+FindlibVersion: >= 1.3.1
+Name:         oasis
+Version: 0.4.6
+LicenseFile:  COPYING.txt
+License:      LGPL-2.1 with OCaml linking exception
+BuildType:    ocamlbuild (0.3)
+Authors:      Sylvain Le Gall
+Maintainers:  Sylvain Le Gall <gildor@ocamlcore.org>
+Copyrights:   (C) 2008-2010 OCamlCore SARL
+Homepage:     http://oasis.forge.ocamlcore.org/
+Plugins:      DevFiles (0.3), StdFiles (0.3), META (0.3)
+FilesAB:      src/oasis/OASISConf.ml.ab
+BuildTools:   ocamlbuild, make
+
+Synopsis: Tooling for building OCaml libraries and applications
+Description:
+  OASIS generates a full configure, build and install system for your
+  application. It starts with a simple `_oasis` file at the toplevel of your
+  project and creates everything required.
+  .
+  OASIS leverages existing OCaml tooling to perform most of it's work. In fact,
+  it might be more appropriate to think of it as simply the glue that binds
+  these other subsystems together and coordinates the work that they do. It
+  should support the following tools:
+  .
+   * OCamlbuild
+   * OMake
+   * OCamlMakefile (todo),
+   * ocaml-autoconf (todo)
+  .
+  It also features a do-it-yourself command line invocation and an internal
+  configure/install scheme. Libraries are managed through findlib. It has been
+  tested on GNU Linux and Windows.
+  .
+  It also allows to have standard entry points and description. It helps to
+  integrates your libraries and software with third parties tools like GODI.
+
+Flag libraries
+  Description: Install OASIS and base libraries, for plugins development
+
+Flag gettext
+  Description: Use ocaml-gettext for i18n
+  Default: false
+
+if flag(gettext)
+  PostBuildCommand: $make -C po all
+  PostCleanCommand: $make -C po clean
+  PostInstallCommand:   $make -C po install PODIR=$prefix/share/locale
+  PostUninstallCommand: $make -C po install PODIR=$prefix/share/locale
+
+Library oasis
+  Path: src/oasis
+  Modules: FormatExt,
+           PropList,
+           OASISUtils,
+           OASISUnixPath,
+           OASISContext,
+           OASISGettext,
+           OASISMessage,
+           OASISText,
+           OASISTypes,
+           OASISParse,
+           OASISValues,
+           OASISExpr,
+           OASISVersion,
+           OASISLicense,
+           OASISFileTemplate,
+           OASISBuildSection,
+           OASISDocument,
+           OASISExecutable,
+           OASISFlag,
+           OASISLibrary,
+           OASISObject,
+           OASISPackage,
+           OASISSourceRepository,
+           OASISTest,
+           OASISPlugin,
+           OASISFindlib,
+           OASISSchema,
+           OASISSection,
+           OASISData,
+           OASISString,
+           OASISExec,
+           OASISFileUtil,
+           OASISHostPath,
+           OASISGraph,
+           OASISFeatures
+  InternalModules: OASISVersion_types,
+                   OASISVersion_lexer,
+                   OASISVersion_parser,
+                   OASISLicense_types,
+                   OASISLicense_lexer,
+                   OASISLicense_parser,
+                   OASISValues_lexer,
+                   OASISConf,
+                   OASISAst,
+                   OASISAstTypes,
+                   OASISCheck,
+                   OASISRecDescParser,
+                   OASISCustom,
+                   OASISQuickstart,
+                   OASISHelp,
+                   OASISFormat,
+                   OASISLexer,
+                   OASISToken,
+                   OASISSection_intern,
+                   OASISBuildSection_intern,
+                   OASISDocument_intern,
+                   OASISExecutable_intern,
+                   OASISFlag_intern,
+                   OASISLibrary_intern,
+                   OASISObject_intern,
+                   OASISPackage_intern,
+                   OASISSourceRepository_intern,
+                   OASISTest_intern,
+                   OASISSchema_intern,
+                   OASISPath_intern
+  CompiledObject: Best
+  BuildDepends: unix (>= 0.0.11)
+  BuildTools+: ocamlyacc, ocamllex
+  XMETADescription: _oasis file functions
+  Install$: flag(libraries)
+
+Library base
+  Path: src/base
+  Modules: BaseArgExt,
+           BaseBuilt,
+           BaseCheck,
+           BaseCustom,
+           BaseDoc,
+           BaseEnvLight,
+           BaseEnv,
+           BaseFileAB,
+           BaseLog,
+           BaseOCamlcConfig,
+           BaseSetup,
+           BaseStandardVar,
+           BaseTest,
+           BaseDynVar,
+           BaseMessage,
+           BaseContext
+  CompiledObject: Best
+  BuildDepends: oasis
+  BuildTools+: ocamlmod, ocamlify
+  FindlibParent: oasis
+  XMETADescription: 'setup.ml' modules for OASIS
+  Install$: flag(libraries)
+
+Library "builtin-plugins"
+  Path: src
+  Modules: OASISBuiltinPlugins,
+           plugins/extra/META/METAPlugin,
+           plugins/internal/InternalConfigurePlugin,
+           plugins/internal/InternalInstallPlugin,
+           plugins/none/NonePlugin,
+           plugins/ocamlbuild/OCamlbuildPlugin,
+           plugins/ocamlbuild/OCamlbuildDocPlugin,
+           plugins/ocamlbuild/OCamlbuildCommon,
+           plugins/custom/CustomPlugin,
+           plugins/extra/devfiles/DevFilesPlugin,
+           plugins/extra/stdfiles/StdFilesPlugin,
+           plugins/omake/OMakePlugin
+  InternalModules: plugins/none/NoneData,
+                   plugins/internal/InternalData,
+                   plugins/internal/InternalId,
+                   plugins/ocamlbuild/OCamlbuildData,
+                   plugins/ocamlbuild/OCamlbuildId,
+                   plugins/ocamlbuild/MyOCamlbuildBase,
+                   plugins/ocamlbuild/MyOCamlbuildFindlib,
+                   plugins/custom/CustomData,
+                   plugins/extra/META/METAData,
+                   plugins/extra/devfiles/DevFilesData,
+                   plugins/extra/stdfiles/StdFilesData,
+                   plugins/omake/OMakeData,
+                   plugins/omake/OMakeFields,
+                   plugins/omake/OMakeEquip,
+                   plugins/omake/OMakeFormat
+  CompiledObject: Best
+  BuildDepends: oasis, oasis.base, ocamlbuild
+  FindlibParent: oasis
+
+Library cli
+  Path:             src/cli
+  Modules:          CLISubCommand,
+                    CLIArgExt,
+                    CLICommon,
+                    CLIPager
+  InternalModules:  CLIData, CLIPluginsLoaded
+  CompiledObject:   byte
+  BuildDepends:     oasis, oasis.base, plugin-loader
+  FindlibParent:    oasis
+  XMETADescription: 'setup.ml' modules for OASIS
+  Install$:         flag(libraries)
+
+Executable oasis
+  Path:   src/cli
+  MainIs: Main.ml
+  BuildDepends: oasis, oasis.base, oasis.cli, oasis.builtin-plugins
+  CompiledObject: best
+
+Executable fake_ocamlfind
+  Path: test/utils
+  MainIs: fake_ocamlfind.ml
+  Install: false
+  CompiledObject: best
+  Build$: flag(tests)
+  BuildDepends: unix
+
+Executable test
+  Path: test
+  MainIs: test.ml
+  Install: false
+  CompiledObject: best
+  Build$: flag(tests)
+  BuildDepends: oUnit (>= 2.0.0), findlib, fileutils (>= 0.4.2),
+                expect.pcre (>= 0.0.4), oasis, oasis.base,
+                oasis.builtin-plugins, pcre
+
+Test main
+  Type: custom (0.3)
+  Command: $test -oasis $oasis -is-native $is_native -native-dynlink $native_dynlink -ocamlmod $ocamlmod -fake-ocamlfind $fake_ocamlfind
+  WorkingDirectory: test
+  TestTools: oasis, test, ocamlmod, fake_ocamlfind, omake, ocamlbuild
+
+Document manual
+  Type: custom (0.3)
+  Title: OASIS User Manual
+  if flag(gettext)
+    XCustom: env LANG=C $oasis -ignore-plugins manual -o doc/MANUAL.mkd
+  else
+    XCustom: $oasis -ignore-plugins manual -o doc/MANUAL.mkd
+  XCustomClean: $rm doc/MANUAL.mkd
+  DataFiles: doc/MANUAL.mkd
+
+Document "api-oasis"
+  Title:                API reference for OASIS
+  Type:                 OCamlbuild (0.3)
+  InstallDir:           $htmldir/oasis
+  BuildTools+:          ocamldoc
+  XOCamlbuildPath:      src/
+  XOCamlbuildLibraries: oasis, oasis.base, oasis.cli
+
+SourceRepository head
+  Type: git
+  Location: git://github.com/gildor478/oasis.git
+  Browser: https://github.com/gildor478/oasis
+
+# Third party: plugin-loader
+
+Library "plugin-loader"
+  Path:         src/ext/plugin-loader/src
+  Modules:      PluginLoader
+  BuildDepends: dynlink, findlib
+  XMETADescription: OCaml plugin management using findlib
+
+Library "pluginloaderLib"
+  Path:    src/ext/plugin-loader/test/data/findlib/pluginloaderLib
+  Modules: PluginloaderLib
+  Build$: flag(tests)
+  Install: false
+  XMETADescription: test library loader
+
+Library "plugin1"
+  Path:    src/ext/plugin-loader/test/data/findlib/plugin1
+  Modules: Plugin1
+  Install: false
+  Build$: flag(tests)
+  BuildDepends: pluginloaderLib
+  XMETADescription: test library number 1
+  XMETAExtraLines: plugin_system = "pluginloader"
+                   plugin_name = "plugin1"
+                   plugin_synopsis = "first plugin"
+
+Library "plugin2"
+  Path:    src/ext/plugin-loader/test/data/findlib/plugin2
+  Modules: Plugin2
+  Install: false
+  Build$: flag(tests)
+  BuildDepends: pluginloaderLib, plugin1
+  XMETADescription: test library number 2
+  XMETAExtraLines: plugin_system = "pluginloader"
+                   plugin_name = "plugin2"
+                   plugin_synopsis = "second plugin"
+
+Library "plugin3"
+  Path:    src/ext/plugin-loader/test/data/findlib/plugin3
+  Modules: Plugin3
+  Install: false
+  Build$: flag(tests)
+  BuildDepends: pluginloaderLib
+  XMETADescription: test library number 3
+  XMETAExtraLines: plugin_system = "pluginloader"
+                   plugin_name = "plugin3"
+                   plugin_synopsis = "third plugin"
+
+Executable "pluginloader"
+  Path:    src/ext/plugin-loader/test/data
+  MainIs:  pluginloader.ml
+  Install: false
+  Build$: flag(tests)
+  BuildDepends: pluginloaderLib, plugin-loader
+
+Executable "test_loader"
+  Path:         src/ext/plugin-loader/test
+  MainIs:       TestLoader.ml
+  BuildDepends: plugin-loader, fileutils, oUnit
+  Build$: flag(tests)
+  Install:      false
+
+Test main_loader
+  Type:      custom (0.3)
+  Command:   $test_loader -pluginloader $pluginloader
+  TestTools: test_loader, pluginloader
