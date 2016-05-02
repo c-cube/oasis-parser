@@ -4,28 +4,19 @@ Version:     0.1
 Synopsis:    Simple parser for _oasis files
 Authors:     Simon Cruanes
 License:     MIT
-Plugins:     META (0.4), StdFiles (0.4), DevFiles (0.4)
+Plugins:     META (0.4), DevFiles (0.4)
 
-Library oasis_parser
+Library "oasis-parser"
   Path:       src/
   BuildTools: ocamlbuild
+  FindlibName:oasis-parser
   Modules:    Oasis_ast, Oasis_parser, Oasis_parser_co
 
 Executable oasis_check
   Path:         src/tools/
   MainIs:       oasis_check.ml
-  BuildDepends: oasis_parser
+  BuildDepends: oasis-parser
   Install:      false
   CompiledObject: best
   BuildTools:   ocamlbuild
-
-# run `oasis_check`
-Test simple_checks
-  Command:      make test-checks
-  TestTools:    oasis_check
-
-# run `oasis_check --print | oasis_check`
-Test self_identity
-  Command:      make test-self-identity
-  TestTools:    oasis_check
 
