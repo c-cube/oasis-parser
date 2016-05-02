@@ -228,4 +228,11 @@ let parse : A.top_stmt list P.t =
 let parse_string s = P.parse_string s ~p:parse
 let parse_file f = P.parse_file ~file:f ~p:parse
 
-
+let split_list l =
+  let p =
+    P.skip_white *>
+      (P.sep ~by:(P.skip_white *> P.char ',' <* P.skip_white)
+         (P.chars1_if (function ',' -> false | c -> not (P.is_white c))))
+    <* P.skip_white <* P.eoi
+  in
+  P.parse_string ~p (String.concat "" l)

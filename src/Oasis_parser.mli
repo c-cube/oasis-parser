@@ -23,3 +23,7 @@ val parse_file : string -> top_stmt list
 val parse_string : string -> top_stmt list
 (** Parse a string
     @raise Oasis_parser_co.ParseError on failure *)
+
+val split_list : string list -> string list
+(** Given a list of blobs (as found in [Oasis_ast.F_set] and [Oasis_ast.F_add]),
+    parse them as a list of comma-separated values *)
