@@ -32,7 +32,7 @@ val f_eval : expr -> field_op
 
 type stmt =
   | S_field of name * field_op
-  | S_if of expr * stmt list * (expr * stmt list) list * stmt list
+  | S_if of expr * stmt list * stmt list
 
 val s_field : name -> field_op -> stmt
 val s_if : expr -> stmt list -> stmt list -> stmt

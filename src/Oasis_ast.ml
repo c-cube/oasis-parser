@@ -35,13 +35,16 @@ let f_eval e = F_eval e
 
 type stmt =
   | S_field of name * field_op
-  | S_if of expr * stmt list * (expr * stmt list) list * stmt list
-    (* [(e, a, [e1, b1; e2, b2; ...], c)] means
-       if e then a else if e1 then b1 else if e2 then b2 ... else c *)
+  | S_if of expr * stmt list * stmt list
 
 let s_field n o = S_field (n,o)
-let s_if a b c = S_if (a, b, [], c)
-let s_if_l a ~then_:b ~elif:l ~else_:c = S_if (a, b, l, c)
+let s_if a b c = S_if (a, b, c)
+let s_if_l a ~then_:b ~elif:l ~else_:c =
+  let rec aux a b c l : stmt = match l with
+    | [] -> s_if a b c
+    | (test,case) :: l' -> s_if a b [aux test case c l']
+  in
+  aux a b c l
 
 type toplevel_decl =
   | Flag
@@ -84,6 +87,12 @@ let pp_str out = function
   | "" -> Format.pp_print_string out "."
   | s -> Format.pp_print_string out s
 
+let rec unroll_if_ = function
+  | [S_if (a,b,c)] ->
+    let elif, else_ = unroll_if_ c in
+    (a,b) :: elif, else_
+  | st -> [], st
+
 let rec pp_stmt out s =
   match s with
     | S_field (n, F_set l) ->
@@ -94,19 +103,25 @@ let rec pp_stmt out s =
         (pp_list pp_str) l
     | S_field (n, F_eval e) ->
       Format.fprintf out "@[%s$: @[<h>%a@]@]" n pp_expr e
-    | S_if (e, a, [], []) ->
-      Format.fprintf out "@[<v>if @[<h>%a@]@ @[<2>  %a@]@]"
-        pp_expr e (pp_list pp_stmt) a
-    | S_if (e, a, [], b) ->
-      Format.fprintf out "@[<v>if @[<h>%a@]@ @[<2>  %a@]@ else@ @[<2>  %a@]@]"
-        pp_expr e (pp_list pp_stmt) a (pp_list pp_stmt) b
-    | S_if (e, a, l, b) ->
-      let ppelif out (a,b) =
-        Format.fprintf out "else if @[<h>%a@]@ @[<2>  %a@]"
-          pp_expr a (pp_list pp_stmt) b
-      in
-      Format.fprintf out "@[<v>if @[<h>%a@]@ @[<2>  %a@]@ %a@ else@ @[<2>  %a@]@]"
-        pp_expr e (pp_list pp_stmt) a (pp_list ppelif) l (pp_list pp_stmt) b
+    | S_if (e, a, b) ->
+      let elif, else_ = unroll_if_ b in
+      begin match elif with
+        | [] ->
+          Format.fprintf out "@[<v>if @[<h>%a@]@ @[<2>  %a@]%a@]"
+            pp_expr e (pp_list pp_stmt) a pp_else else_
+        | _ ->
+          let ppelif out (a,b) =
+            Format.fprintf out "else if @[<h>%a@]@ @[<2>  %a@]"
+              pp_expr a (pp_list pp_stmt) b
+          in
+          Format.fprintf out "@[<v>if @[<h>%a@]@ @[<2>  %a@]@ %a%a@]"
+            pp_expr e (pp_list pp_stmt) a (pp_list ppelif) elif pp_else else_
+      end
+
+and pp_else out st_l = match st_l with
+  | [] -> ()
+  | _::_ ->
+    Format.fprintf out "@ else@ @[<2>  %a@]" (pp_list pp_stmt) st_l
 
 let pp_top_stmt out st =
   let pp_decl out d =
