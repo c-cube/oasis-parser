@@ -40,8 +40,8 @@ type stmt =
        if e then a else if e1 then b1 else if e2 then b2 ... else c *)
 
 let s_field n o = S_field (n,o)
-let s_if_l a b l c = S_if (a, b, l, c)
-let s_if a b c = s_if_l a b [] c
+let s_if a b c = S_if (a, b, [], c)
+let s_if_l a ~then_:b ~elif:l ~else_:c = S_if (a, b, l, c)
 
 type toplevel_decl =
   | Flag
@@ -58,6 +58,10 @@ type top_stmt =
 
 let ts_decl d n s = TS_decl (d,n,s)
 let ts_stmt s = TS_stmt s
+
+(** {2 IO} *)
+
+type 'a printer = Format.formatter -> 'a -> unit
 
 let rec pp_expr out = function
   | E_flag s -> Format.fprintf out "flag(%s)" s
